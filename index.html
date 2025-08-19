@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jam on – Playback Aleatório</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #121822;
+      --accent: #5eead4;
+      --muted: #7a89a6;
+      --text: #e6edf6;
+      --danger: #f87171;
+      --ok: #86efac;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      min-height: 100vh; display: grid; place-items: center;
+    }
+    .wrap { width: min(1100px, 92vw); }
+    header { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin: 2rem 0 1.25rem; }
+    h1 { font-size: clamp(1.4rem, 2.2vw, 2rem); margin: 0; letter-spacing: .3px; }
+    .card { background: linear-gradient(180deg, #121822, #0d131c); border: 1px solid #1e293b; border-radius: 18px; padding: 1rem; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+    .controls { grid-column: span 12; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .controls button, .controls select, .controls input[type="number"] {
+      background: #0f172a; color: var(--text); border: 1px solid #1f2937; border-radius: 12px; padding: .65rem .9rem; font-size: .95rem; outline: none;
+    }
+    .controls button { cursor: pointer; border-color:#334155; transition: transform .06s ease, background .2s ease, border-color .2s ease; }
+    .controls button:hover { transform: translateY(-1px); }
+    .controls button.primary { background: #0b3b39; border-color:#134e4a; }
+    .controls button.primary[data-state="on"] { background:#065f46; border-color:#0f766e; }
+    .controls button.danger { background:#3b0b0b; border-color:#7f1d1d; }
+    .pill { background:#0b1320; border:1px solid #1f2a44; padding:.4rem .6rem; border-radius:999px; font-size:.85rem; color: var(--muted); }
+    .split { grid-column: span 12; display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; }
+    .panel { grid-column: span 6; background:#0b0f16; border:1px solid #1b2538; border-radius:12px; padding:12px; }
+    .panel h3 { margin:0 0 8px; font-size:1rem; color:#a6b4cf; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:.92rem; }
+    .log { grid-column: span 12; background:#080c12; border:1px dashed #1b283b; border-radius:12px; padding:10px; height: 170px; overflow:auto; white-space: pre-wrap; font-size:.9rem; color:#cbd5e1; }
+    .footer { margin: .75rem 0 0; color: var(--muted); font-size:.85rem; }
+    .badge { display:inline-block; padding:.15rem .45rem; border-radius:6px; border:1px solid #294256; background:#0b1826; color:#9bd5f0; font-size:.8rem; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+    .spacer { flex: 1 1 auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Jam on – Playback Aleatório (baixo + bateria)</h1>
+      <div class="pill">Cada pulso do BPM = seminima</div>
+    </header>
+
+    <section class="card">
+      <div class="grid">
+        <div class="controls">
+          <button id="btnPlay" class="primary">▶️ Play</button>
+          <button id="btnPause">⏸️ Pause</button>
+          <button id="btnStop" class="danger">⏹️ Stop</button>
+          <button id="btnSave" title="Grava 4 minutos do playback atual e baixa o arquivo (WEBM)." class="primary">💾 Salvar 4 min</button>
+          <span class="spacer"></span>
+          <label class="row">BPM <input id="bpm" type="number" min="40" max="220" value="100" style="width:90px"></label>
+          <label class="row">Assinatura
+            <select id="meter">
+              <option value="auto" selected>aleatória</option>
+              <option>2/4</option>
+              <option>3/4</option>
+              <option>4/4</option>
+              <option>5/4</option>
+              <option>6/4</option>
+              <option>7/4</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="split">
+          <div class="panel" style="grid-column: span 6;">
+            <h3>Estado atual</h3>
+            <div class="mono" id="state"></div>
+            <div class="footer">Ao clicar em <b>Play</b> sempre gera um novo playback (LP/LPZ aleatório).</div>
+          </div>
+          <div class="panel" style="grid-column: span 6;">
+            <h3>Arquivos esperados</h3>
+            <div class="mono">
+              <div>Coloque os áudios na pasta <span class="badge">/assets/</span>:</div>
+              <ul>
+                <li>Peças: <b>chimbal.mp3</b>, <b>bumbo.mp3</b>, <b>caixa.mp3</b></li>
+                <li>Baixo: <b>bass-A.mp3</b>, <b>bass-AS.mp3</b>, <b>bass-B.mp3</b>, ..., <b>bass-A8.mp3</b>, <b>bass-A16.mp3</b>, <b>bass-A8S.mp3</b>, etc.</li>
+                <li>Especial: <b>bass-muted.mp3</b> (corda abafada)</li>
+              </ul>
+            </div>
+          </div>
+          <div class="log mono" id="log"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+  // =============================
+  // Jam on – Engine de Playback
+  // =============================
+  const ui = {
+    play: document.getElementById('btnPlay'),
+    pause: document.getElementById('btnPause'),
+    stop: document.getElementById('btnStop'),
+    save: document.getElementById('btnSave'),
+    bpm: document.getElementById('bpm'),
+    meter: document.getElementById('meter'),
+    log: document.getElementById('log'),
+    state: document.getElementById('state'),
+  };
+
+  const audio = {
+    ctx: null,
+    master: null,
+    mix: null,
+    drumGain: null,
+    bassGain: null,
+    schedulerTimer: null,
+    lookahead: 0.1,
+    scheduleHorizon: 0.25,
+  };
+
+  const DRUMS = {
+    chimbal: 'assets/chimbal.mp3',
+    bumbo: 'assets/bumbo.mp3',
+    caixa: 'assets/caixa.mp3',
+  };
+
+  const PITCHES = ['A','AS','B','C','CS','D','DS','E','F','FS','G','GS'];
+
+  // Gera todos os samples de baixo
+  const BASS_SAMPLES = (() => {
+    const baseOctaves = ['', '8', '16'];
+    const table = {};
+    for (const p of PITCHES) {
+      for (const o of baseOctaves) {
+        const note = p.replace('S', '');
+        const sharp = p.includes('S') ? 'S' : '';
+        const key = o + sharp;
+        const filename = `bass-${note}${key || ''}.mp3`;
+        table[p + o] = `assets/${filename}`;
+      }
+    }
+    return table;
+  })();
+
+  // Som abafado (opcional)
+  BASS_SAMPLES['X'] = 'assets/bass-muted.mp3';
+
+  // Progressões
+  const PROGRESSIONS = [
+    [1, 4, 5, 6],
+    [1, 5, 6, 4],
+    [1, 6, 4, 5]
+  ];
+
+  const state = {
+    running: false,
+    paused: false,
+    nextNoteTime: 0,
+    meter: '4/4',
+    bpm: 100,
+    sixteenthDur: 0.15,
+    stepIndex: 0,
+    pattern: [],
+    buffers: { drums: {}, bass: {} },
+    lastBassSrc: null, // para controle de sobreposição
+    bassPlan: [],
+    signatureTag: 'LP',
+    key: null,
+    keyIdx: 0,
+    quality: 'maj',
+    chordProgression: [],
+    bassStyle: '', // novo: estilo do baixo
+  };
+
+  function log(msg){ ui.log.textContent += `\n${msg}`; ui.log.scrollTop = ui.log.scrollHeight; }
+
+  function setStatePanel(){
+    ui.state.innerHTML = `
+      <div>LP/LPZ: <b>${state.signatureTag}</b></div>
+      <div>Compasso: <b>${state.meter}</b></div>
+      <div>BPM: <b>${state.bpm}</b> (semicolcheia = ${(state.sixteenthDur * 1000).toFixed(0)} ms)</div>
+      <div>Estilo baixo: <b>${state.bassStyle}</b></div>
+      <div>Tom: <b>${state.key} ${state.quality}</b></div>
+      <div>Progressão: <b>${state.chordProgression.join('-')}</b></div>
+      <div>Plano baixo (preview): <span class="badge">${state.bassPlan.slice(0, 16).map(n => n || 'X').join(', ')}</span></div>
+    `;
+  }
+
+  async function loadBuffer(url){
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('Falha ao carregar '+url);
+    const arr = await res.arrayBuffer();
+    return await audio.ctx.decodeAudioData(arr);
+  }
+
+  async function ensureSamples(){
+    for (const [k, url] of Object.entries(DRUMS)) {
+      if(!state.buffers.drums[k]){
+        try { state.buffers.drums[k] = await loadBuffer(url); }
+        catch(e){ log(`[AU] Falha ao carregar ${url}`); }
+      }
+    }
+  }
+
+  function initAudio(){
+    if (audio.ctx) return;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    audio.ctx = ctx;
+    audio.master = ctx.createGain();
+    audio.master.gain.value = 0.9;
+
+    audio.drumGain = ctx.createGain();
+    audio.drumGain.gain.value = 0.85;
+
+    audio.bassGain = ctx.createGain();
+    audio.bassGain.gain.value = 0.9;
+
+    audio.mix = ctx.createMediaStreamDestination();
+
+    audio.drumGain.connect(audio.master);
+    audio.bassGain.connect(audio.master);
+    audio.master.connect(audio.mix);
+    audio.master.connect(ctx.destination);
+  }
+
+  function randItem(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+  function randInt(min, max){ return Math.floor(Math.random()*(max-min+1))+min; }
+  function coin(){ return Math.random() < 0.5; }
+
+  function meterToBeats(meter) {
+    const [num, den] = meter.split('/').map(Number);
+    return [num, den];
+  }
+
+  // Gera padrão de bateria
+  function buildDrumPattern() {
+    const chosen = ui.meter.value === 'auto' ? randItem(['2/4','3/4','4/4','5/4','6/4','7/4']) : ui.meter.value;
+    state.meter = chosen;
+    const [num, den] = meterToBeats(chosen);
+    const quarterPerBar = num;
+    const totalSteps = quarterPerBar * 4;
+
+    let pattern = Array(totalSteps).fill('-');
+    const isLPZ = coin();
+    state.signatureTag = isLPZ ? 'LPZ' : 'LP';
+
+    // Chimbal com groove
+    const chimbalStyle = randItem(['swing', 'straight', 'dotted']);
+    for (let i = 0; i < totalSteps; i++) {
+      const sub = i % 4;
+      if (
+        (chimbalStyle === 'swing' && (sub === 0 || sub === 2)) ||
+        (chimbalStyle === 'straight' && sub % 2 === 0) ||
+        (chimbalStyle === 'dotted' && (sub === 0 || sub === 3))
+      ) {
+        pattern[i] = pattern[i] === '-' ? 'H' : pattern[i] + 'H';
+      }
+    }
+
+    // Bumbo no 1º tempo
+    pattern[0] = pattern[0] === '-' ? 'B' : pattern[0] + 'B';
+
+    // Pre-kick (16ª antes da caixa)
+    const caixaIndex = 8;
+    if (quarterPerBar >= 3 && caixaIndex < totalSteps && coin()) {
+      const preKick = caixaIndex - 1;
+      pattern[preKick] = pattern[preKick] === '-' ? 'B' : pattern[preKick] + 'B';
+    }
+
+    // Caixa no 3º tempo
+    if (quarterPerBar >= 3 && caixaIndex < totalSteps) {
+      pattern[caixaIndex] = pattern[caixaIndex] === '-' ? 'C' : pattern[caixaIndex] + 'C';
+    }
+
+    // Variações LPZ
+    if (isLPZ) {
+      const variations = randInt(1, 3);
+      for (let i = 0; i < variations; i++) {
+        const idx = randInt(0, totalSteps - 1);
+        const r = randInt(1, 5);
+        if (r === 1 && pattern[idx].includes('H')) {
+          pattern[idx] = pattern[idx].replace('H', '');
+        } else if (r === 2) {
+          pattern[idx] = pattern[idx] === '-' ? 'B' : pattern[idx] + 'B';
+        } else if (r === 3) {
+          pattern[idx] = pattern[idx] === '-' ? 'C' : pattern[idx] + 'C';
+        } else if (r === 4) {
+          pattern[idx] = pattern[idx] === '-' ? 'H' : pattern[idx] + 'H';
+        }
+      }
+    }
+
+    return pattern.map(cell => {
+      if (cell === '-') return '-';
+      return ['H','B','C'].filter(char => cell.includes(char)).join('');
+    });
+  }
+
+  // ========================
+  // NOVO: Estilos variados de baixo
+  // ========================
+  function buildBassPlan() {
+  const [num, den] = meterToBeats(state.meter);
+  const totalBars = 16;
+  const quartersPerBar = num;
+  const sixteenthsPerBar = num * 4;
+  const totalSteps = totalBars * sixteenthsPerBar;
+
+  state.keyIdx = randInt(0, PITCHES.length - 1);
+  state.key = PITCHES[state.keyIdx];
+  state.quality = randItem(['maj', 'min']);
+  const progression = randItem(PROGRESSIONS);
+  state.chordProgression = progression;
+
+  function getChord(rootIdx, type) {
+    if (type === 'maj') return [rootIdx, (rootIdx + 4) % 12, (rootIdx + 7) % 12];
+    if (type === 'min') return [rootIdx, (rootIdx + 3) % 12, (rootIdx + 7) % 12];
+    return [rootIdx, (rootIdx + 3) % 12, (rootIdx + 6) % 12];
+  }
+
+  const chordMap = progression.map(degree => {
+    const rootOffset = { 1: 0, 4: 5, 5: 7, 6: 9 }[degree];
+    const rootIdx = (state.keyIdx + rootOffset) % 12;
+    return getChord(rootIdx, state.quality);
+  });
+
+  const plan = [];
+
+  // Estilos disponíveis (podem ser usados compasso a compasso)
+  const availableStyles = [
+    'whole',      // 1 nota por compasso (semibreve)
+    'half',       // 2 notas: tônica e quinta
+    'quarter',    // 1 nota por tempo
+    'eighth',     // colcheias: tônica e tônica
+    'pizz',       // semínima + abafado
+    'walking',    // colcheias com abafado
+    'syncopated', // ênfase no "e"
+    'arpeggio',   // arpejo em colcheias
+    'roots',      // só a tônica em cada tempo
+    'fifth',      // quinta no segundo tempo
+  ];
+
+  // Vamos definir um estilo por compasso
+  const barStyles = [];
+  for (let bar = 0; bar < totalBars; bar++) {
+    barStyles.push(randItem(availableStyles));
+  }
+
+  for (let step = 0; step < totalSteps; step++) {
+    const bar = Math.floor(step / sixteenthsPerBar);
+    const quarterStep = Math.floor(step / 4); // semínima
+    const beatInBar = (step / 4) % quartersPerBar; // tempo dentro do compasso
+    const sub = step % 4; // posição na semínima (0: semínima, 2: "e")
+    const chordIdx = Math.floor(bar / (totalBars / progression.length));
+    const chordNotes = chordMap[chordIdx];
+    const root = PITCHES[chordNotes[0]];
+    const third = PITCHES[chordNotes[1]];
+    const fifth = PITCHES[chordNotes[2]];
+
+    let note = '-';
+
+    const style = barStyles[bar]; // estilo do compasso atual
+
+    if (style === 'whole') {
+      if (sub === 0 && beatInBar === 0) note = root;
+    }
+    else if (style === 'half') {
+      if (sub === 0 && beatInBar === 0) note = root;
+      if (sub === 0 && beatInBar === 2) note = fifth;
+    }
+    else if (style === 'quarter') {
+      if (sub === 0) note = root;
+    }
+    else if (style === 'eighth') {
+      if (sub === 0 || sub === 2) note = root;
+    }
+    else if (style === 'pizz') {
+      if (sub === 0) note = root;
+      if (sub === 2) note = 'X';
+    }
+    else if (style === 'walking') {
+      if (sub === 0) note = root;
+      if (sub === 2) note = 'X';
+    }
+    else if (style === 'syncopated') {
+      if (sub === 2) note = root;
+      if (sub === 0) note = 'X';
+    }
+    else if (style === 'arpeggio') {
+      const cycle = Math.floor(beatInBar);
+      const arp = [root, third, fifth, root + '8'];
+      if (sub === 0) note = arp[cycle % 4];
+    }
+    else if (style === 'roots') {
+      if (sub === 0) note = root;
+    }
+    else if (style === 'fifth') {
+      if (sub === 0 && beatInBar === 2) note = fifth;
+      else if (sub === 0 && beatInBar === 0) note = root;
+    }
+
+    plan.push(note);
+  }
+
+  // Registra o estilo usado (para debug)
+  state.bassStyle = `mix: ${[...new Set(barStyles.slice(0, 4))].join(', ')}`;
+  state.bassPlan = plan;
+}
+
+  async function prepareNewPlayback(){
+    state.bpm = Number(ui.bpm.value) || 100;
+    state.sixteenthDur = (60 / state.bpm) / 4;
+    state.stepIndex = 0;
+    state.nextNoteTime = audio.ctx.currentTime + 0.05;
+
+    state.pattern = buildDrumPattern();
+    await ensureSamples();
+    buildBassPlan();
+    setStatePanel();
+  }
+
+  function scheduleStep(time, stepIdx){
+    const cell = state.pattern[stepIdx % state.pattern.length];
+    function playBuf(buf){
+      if (!buf) return;
+      const src = audio.ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(audio.drumGain);
+      src.start(time);
+    }
+    if (cell && cell !== '-'){
+      if (cell.includes('H')) playBuf(state.buffers.drums.chimbal);
+      if (cell.includes('B')) playBuf(state.buffers.drums.bumbo);
+      if (cell.includes('C')) playBuf(state.buffers.drums.caixa);
+    }
+
+    const bassKey = state.bassPlan[stepIdx % state.bassPlan.length];
+    if (bassKey && bassKey !== '-'){
+      // Para evitar sobreposição, garantimos que o anterior pare
+      if (state.lastBassSrc) {
+        try { state.lastBassSrc.stop(time + 0.05); } // corta logo após tocar
+        catch(e){ /* ignore */ }
+      }
+
+      const sampleKey = bassKey === 'X' ? 'X' : bassKey;
+      if (BASS_SAMPLES[sampleKey]) {
+        const run = async () => {
+          if (!state.buffers.bass[sampleKey]) {
+            try { state.buffers.bass[sampleKey] = await loadBuffer(BASS_SAMPLES[sampleKey]); }
+            catch(e){ log(`[AU] Falha no baixo ${BASS_SAMPLES[sampleKey]}`); return; }
+          }
+          const src = audio.ctx.createBufferSource();
+          src.buffer = state.buffers.bass[sampleKey];
+          src.connect(audio.bassGain);
+          src.start(time);
+          src.onended = () => { if (state.lastBassSrc === src) state.lastBassSrc = null; };
+          state.lastBassSrc = src;
+        };
+        run();
+      }
+    }
+  }
+
+  function scheduler(){
+    const now = audio.ctx.currentTime;
+    while (state.nextNoteTime < now + audio.scheduleHorizon){
+      scheduleStep(state.nextNoteTime, state.stepIndex);
+      state.nextNoteTime += state.sixteenthDur;
+      state.stepIndex++;
+    }
+  }
+
+  function startScheduler(){
+    stopScheduler();
+    audio.schedulerTimer = setInterval(scheduler, audio.lookahead * 1000);
+  }
+  function stopScheduler(){ if (audio.schedulerTimer) { clearInterval(audio.schedulerTimer); audio.schedulerTimer = null; } }
+
+  let recorder = null; let recChunks = []; let recTimer = null;
+  function startRecording(){
+    if (!audio.mix) return;
+    if (!('MediaRecorder' in window)) { log('[REC] MediaRecorder não suportado.'); return; }
+    try {
+      recorder = new MediaRecorder(audio.mix.stream, { mimeType: 'audio/webm' });
+    } catch(e){ log('[REC] Falha ao iniciar gravador: '+e.message); return; }
+
+    recChunks = [];
+    recorder.ondataavailable = ev => { if (ev.data && ev.data.size) recChunks.push(ev.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(recChunks, { type: 'audio/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `jam-on-${Date.now()}.webm`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      log('[REC] Download concluído (WEBM).');
+    };
+    recorder.start();
+    log('[REC] Gravando 4 minutos...');
+    recTimer = setTimeout(()=>{ if (recorder && recorder.state!=='inactive') recorder.stop(); }, 4*60*1000);
+  }
+
+  function stopRecording(){
+    if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+    if (recorder && recorder.state !== 'inactive') { recorder.stop(); }
+  }
+
+  async function onPlay(){
+    initAudio();
+    await prepareNewPlayback();
+    state.running = true; state.paused = false;
+    startScheduler();
+    ui.play.dataset.state = 'on';
+    log(`[PLAY] Estilo baixo: ${state.bassStyle} | ${state.meter} @ ${state.bpm} BPM | Tom: ${state.key} ${state.quality}`);
+  }
+
+  function onPause(){
+    if (!audio.ctx) return;
+    if (!state.running) return;
+    if (!state.paused){
+      audio.ctx.suspend();
+      state.paused = true;
+      ui.play.textContent = '▶️ Retomar';
+      log('[PAUSE] Suspenso');
+    } else {
+      audio.ctx.resume();
+      state.paused = false;
+      ui.play.textContent = '▶️ Play';
+      log('[PAUSE] Retomado');
+    }
+  }
+
+  async function onStop(){
+    if (!audio.ctx) return;
+    stopScheduler();
+    stopRecording();
+    try { audio.ctx.close(); } catch(_){}
+    audio.ctx = null;
+    state.running = false;
+    state.paused = false;
+    state.stepIndex = 0;
+    state.pattern = [];
+    state.bassPlan = [];
+    state.lastBassSrc = null;
+    ui.play.dataset.state = '';
+    log('[STOP] Parado. Um novo Play gerará outro playback aleatório.');
+  }
+
+  function onSave(){
+    if (!audio.ctx){ log('[REC] Inicie o playback antes de salvar.'); return; }
+    startRecording();
+  }
+
+  ui.play.addEventListener('click', onPlay);
+  ui.pause.addEventListener('click', onPause);
+  ui.stop.addEventListener('click', onStop);
+  ui.save.addEventListener('click', onSave);
+
+  log('Coloque seus arquivos de áudio em /assets/. Pressione Play para gerar seu primeiro playback.');
+</script>
+</body>
+</html>
